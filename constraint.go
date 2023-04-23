@@ -1,10 +1,10 @@
 package version
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"regexp"
-	"sort"
 	"strings"
 )
 
@@ -12,40 +12,31 @@ import (
 // ">= 1.0".
 type Constraint struct {
 	f        constraintFunc
-	op       operator
 	check    *Version
 	original string
 }
 
-func (c *Constraint) Equals(con *Constraint) bool {
-	return c.op == con.op && c.check.Equal(con.check)
-}
-
-// Constraints is a slice of constraints. We make a custom type so that
-// we can add methods to it.
-type Constraints []*Constraint
+// Constraints is a 2D slice of constraints.
+type Constraints [][]*Constraint
 
 type constraintFunc func(v, c *Version) bool
 
-var constraintOperators map[string]constraintOperation
-
-type constraintOperation struct {
-	op operator
-	f  constraintFunc
-}
+var constraintOperators map[string]constraintFunc
 
 var constraintRegexp *regexp.Regexp
 
 func init() {
-	constraintOperators = map[string]constraintOperation{
-		"":   {op: equal, f: constraintEqual},
-		"=":  {op: equal, f: constraintEqual},
-		"!=": {op: notEqual, f: constraintNotEqual},
-		">":  {op: greaterThan, f: constraintGreaterThan},
-		"<":  {op: lessThan, f: constraintLessThan},
-		">=": {op: greaterThanEqual, f: constraintGreaterThanEqual},
-		"<=": {op: lessThanEqual, f: constraintLessThanEqual},
-		"~>": {op: pessimistic, f: constraintPessimistic},
+	constraintOperators = map[string]constraintFunc{
+		"":   constraintEqual,
+		"=":  constraintEqual,
+		"!=": constraintNotEqual,
+		">":  constraintGreaterThan,
+		"<":  constraintLessThan,
+		">=": constraintGreaterThanEqual,
+		"<=": constraintLessThanEqual,
+		"~>": constraintPessimistic,
+		"^":  constraintCaret,
+		"~":  constraintTilde,
 	}
 
 	ops := make([]string, 0, len(constraintOperators))
@@ -60,113 +51,65 @@ func init() {
 }
 
 // NewConstraint will parse one or more constraints from the given
-// constraint string. The string must be a comma-separated list of
-// constraints.
-func NewConstraint(v string) (Constraints, error) {
-	vs := strings.Split(v, ",")
-	result := make([]*Constraint, len(vs))
-	for i, single := range vs {
-		c, err := parseSingle(single)
-		if err != nil {
-			return nil, err
+// constraint string. The string must be a comma or pipe separated
+// list of constraints.
+func NewConstraint(cs string) (Constraints, error) {
+	ors := strings.Split(cs, "||")
+	or := make([][]*Constraint, len(ors))
+	for k, v := range ors {
+		vs := strings.Split(v, ",")
+		result := make([]*Constraint, len(vs))
+		for i, single := range vs {
+			c, err := parseSingle(single)
+			if err != nil {
+				return nil, err
+			}
+
+			result[i] = c
 		}
-
-		result[i] = c
+		or[k] = result
 	}
 
-	return Constraints(result), nil
-}
-
-// MustConstraints is a helper that wraps a call to a function
-// returning (Constraints, error) and panics if error is non-nil.
-func MustConstraints(c Constraints, err error) Constraints {
-	if err != nil {
-		panic(err)
-	}
-
-	return c
+	return Constraints(or), nil
 }
 
 // Check tests if a version satisfies all the constraints.
 func (cs Constraints) Check(v *Version) bool {
-	for _, c := range cs {
-		if !c.Check(v) {
-			return false
+	for _, o := range cs {
+		ok := true
+		for _, c := range o {
+			if !c.Check(v) {
+				ok = false
+				break
+			}
+		}
+
+		if ok {
+			return true
 		}
 	}
 
-	return true
-}
-
-// Equals compares Constraints with other Constraints
-// for equality. This may not represent logical equivalence
-// of compared constraints.
-// e.g. even though '>0.1,>0.2' is logically equivalent
-// to '>0.2' it is *NOT* treated as equal.
-//
-// Missing operator is treated as equal to '=', whitespaces
-// are ignored and constraints are sorted before comaparison.
-func (cs Constraints) Equals(c Constraints) bool {
-	if len(cs) != len(c) {
-		return false
-	}
-
-	// make copies to retain order of the original slices
-	left := make(Constraints, len(cs))
-	copy(left, cs)
-	sort.Stable(left)
-	right := make(Constraints, len(c))
-	copy(right, c)
-	sort.Stable(right)
-
-	// compare sorted slices
-	for i, con := range left {
-		if !con.Equals(right[i]) {
-			return false
-		}
-	}
-
-	return true
-}
-
-func (cs Constraints) Len() int {
-	return len(cs)
-}
-
-func (cs Constraints) Less(i, j int) bool {
-	if cs[i].op < cs[j].op {
-		return true
-	}
-	if cs[i].op > cs[j].op {
-		return false
-	}
-
-	return cs[i].check.LessThan(cs[j].check)
-}
-
-func (cs Constraints) Swap(i, j int) {
-	cs[i], cs[j] = cs[j], cs[i]
+	return false
 }
 
 // Returns the string format of the constraints
 func (cs Constraints) String() string {
-	csStr := make([]string, len(cs))
-	for i, c := range cs {
-		csStr[i] = c.String()
+	orStr := make([]string, len(cs))
+	for i, o := range cs {
+		csStr := make([]string, len(o))
+		for j, c := range o {
+			csStr[j] = c.String()
+		}
+
+		orStr[i] = strings.Join(csStr, ",")
 	}
 
-	return strings.Join(csStr, ",")
+	return strings.Join(orStr, "||")
 }
 
 // Check tests if a constraint is validated by the given version.
 func (c *Constraint) Check(v *Version) bool {
 	return c.f(v, c.check)
-}
-
-// Prerelease returns true if the version underlying this constraint
-// contains a prerelease field.
-func (c *Constraint) Prerelease() bool {
-	return len(c.check.Prerelease()) > 0
 }
 
 func (c *Constraint) String() string {
@@ -184,11 +127,8 @@ func parseSingle(v string) (*Constraint, error) {
 		return nil, err
 	}
 
-	cop := constraintOperators[matches[1]]
-
 	return &Constraint{
-		f:        cop.f,
-		op:       cop.op,
+		f:        constraintOperators[matches[1]],
 		check:    check,
 		original: v,
 	}, nil
@@ -202,9 +142,7 @@ func prereleaseCheck(v, c *Version) bool {
 		return reflect.DeepEqual(c.Segments64(), v.Segments64())
 
 	case !cPre && vPre:
-		// A constraint without a pre-release can only match a version without a
-		// pre-release.
-		return false
+		// OK per https://semver.org/#spec-item-11 (#3)
 
 	case cPre && !vPre:
 		// OK, except with the pessimistic operator
@@ -217,18 +155,6 @@ func prereleaseCheck(v, c *Version) bool {
 //-------------------------------------------------------------------
 // Constraint functions
 //-------------------------------------------------------------------
-
-type operator rune
-
-const (
-	equal            operator = '='
-	notEqual         operator = '≠'
-	greaterThan      operator = '>'
-	lessThan         operator = '<'
-	greaterThanEqual operator = '≥'
-	lessThanEqual    operator = '≤'
-	pessimistic      operator = '~'
-)
 
 func constraintEqual(v, c *Version) bool {
 	return v.Equal(c)
@@ -293,4 +219,56 @@ func constraintPessimistic(v, c *Version) bool {
 
 	// If nothing has rejected the version by now, it's valid
 	return true
+}
+
+func constraintCaret(v, c *Version) bool {
+	if !prereleaseCheck(v, c) || v.LessThan(c) {
+		return false
+	}
+
+	if v.segments[0] != c.segments[0] {
+		return false
+	}
+
+	return true
+}
+
+func constraintTilde(v, c *Version) bool {
+	if !prereleaseCheck(v, c) || v.LessThan(c) {
+		return false
+	}
+
+	if v.segments[0] != c.segments[0] {
+		return false
+	}
+
+	if v.segments[1] != c.segments[1] && c.si > 1 {
+		return false
+	}
+
+	return true
+}
+
+// MarshalJSON - implement the json-Marshaler interface
+func (c *Constraints) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.String())
+}
+
+// UnmarshalJSON - implement the json-Unmarshaler interface
+func (c *Constraints) UnmarshalJSON(data []byte) (err error) {
+	var constraintStr string
+	var nc Constraints
+
+	err = json.Unmarshal(data, &constraintStr)
+	if err != nil {
+		return
+	}
+
+	nc, err = NewConstraint(constraintStr)
+	if err != nil {
+		return
+	}
+	*c = nc
+
+	return
 }

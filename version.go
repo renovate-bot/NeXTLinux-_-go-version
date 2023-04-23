@@ -2,6 +2,7 @@ package version
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"regexp"
@@ -210,17 +211,11 @@ func comparePart(preSelf string, preOther string) int {
 
 	// if a part is empty, we use the other to decide
 	if preSelf == "" {
-		if otherNumeric {
-			return -1
-		}
-		return 1
+		return -1
 	}
 
 	if preOther == "" {
-		if selfNumeric {
-			return 1
-		}
-		return -1
+		return 1
 	}
 
 	if selfNumeric && !otherNumeric {
@@ -274,14 +269,6 @@ func comparePrereleases(v string, other string) int {
 	}
 
 	return 0
-}
-
-// Core returns a new version constructed from only the MAJOR.MINOR.PATCH
-// segments of the version, without prerelease or metadata.
-func (v *Version) Core() *Version {
-	segments := v.Segments64()
-	segmentsOnly := fmt.Sprintf("%d.%d.%d", segments[0], segments[1], segments[2])
-	return Must(NewVersion(segmentsOnly))
 }
 
 // Equal tests if two versions are equal.
@@ -389,19 +376,22 @@ func (v *Version) Original() string {
 	return v.original
 }
 
-// UnmarshalText implements encoding.TextUnmarshaler interface.
-func (v *Version) UnmarshalText(b []byte) error {
-	temp, err := NewVersion(string(b))
-	if err != nil {
+// UnmarshalJSON implements the enconding/json.UnmarshalJSON interface
+func (v *Version) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
 		return err
 	}
 
-	*v = *temp
-
+	p, err := NewVersion(s)
+	if err != nil {
+		return err
+	}
+	*v = *p
 	return nil
 }
 
-// MarshalText implements encoding.TextMarshaler interface.
-func (v *Version) MarshalText() ([]byte, error) {
-	return []byte(v.String()), nil
+// MarshalJSON implements the enconding/json.MarshalJSON interface
+func (v Version) MarshalJSON() ([]byte, error) {
+	return json.Marshal(v.String())
 }
