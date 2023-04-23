@@ -140,10 +140,8 @@ func prereleaseCheck(v, c *Version) bool {
 		// A constraint with a pre-release can only match a pre-release version
 		// with the same base segments.
 		return reflect.DeepEqual(c.Segments64(), v.Segments64())
-
 	case !cPre && vPre:
-		// OK per https://semver.org/#spec-item-11 (#3)
-
+		// OK, per https://semver.org/#spec-item-11 (#3)
 	case cPre && !vPre:
 		// OK, except with the pessimistic operator
 	case !cPre && !vPre:
@@ -165,19 +163,19 @@ func constraintNotEqual(v, c *Version) bool {
 }
 
 func constraintGreaterThan(v, c *Version) bool {
-	return prereleaseCheck(v, c) && v.Compare(c) == 1
+	return v.Compare(c) == 1
 }
 
 func constraintLessThan(v, c *Version) bool {
-	return prereleaseCheck(v, c) && v.Compare(c) == -1
+	return v.Compare(c) == -1
 }
 
 func constraintGreaterThanEqual(v, c *Version) bool {
-	return prereleaseCheck(v, c) && v.Compare(c) >= 0
+	return v.Compare(c) >= 0
 }
 
 func constraintLessThanEqual(v, c *Version) bool {
-	return prereleaseCheck(v, c) && v.Compare(c) <= 0
+	return v.Compare(c) <= 0
 }
 
 func constraintPessimistic(v, c *Version) bool {
