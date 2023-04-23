@@ -1,5 +1,6 @@
 # Versioning Library for Go
-![Build Status](https://github.com/nextlinux/go-version/actions/workflows/go-tests.yml/badge.svg) [![CircleCI](https://dl.circleci.com/status-badge/img/gh/NeXTLinux/go-version/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/NeXTLinux/go-version/tree/main)
+[![CircleCI](https://dl.circleci.com/status-badge/img/gh/NeXTLinux/go-version/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/NeXTLinux/go-version/tree/main)
+[![GoDoc](https://godoc.org/github.com/nextlinux/go-version?status.svg)](https://godoc.org/github.com/nextlinux/go-version)
 
 go-version is a library for parsing versions and version constraints,
 and verifying versions against a set of constraints. go-version
