@@ -89,11 +89,11 @@ func TestConstraintCheck(t *testing.T) {
 		{"> 2.0", "2.0.0-beta", false},
 		{">= 2.0", "2.0.0-beta", false},
 		{">= 2.1.0-a", "2.1.0-beta", true},
-		{">= 2.1.0-a", "2.1.1-beta", false},
-		{">= 2.0.0", "2.1.0-beta", true}, // https://semver.org/#spec-item-11 (#3)
+		{">= 2.1.0-a", "2.1.1-beta", true}, // segment comparison takes precedence over prerelease comparison, but is still valid to compare
+		{">= 2.0.0", "2.1.0-beta", true},   // https://semver.org/#spec-item-11 (#3)
 		{">= 2.0.0", "2.0.0-beta", false},
 		{">= 2.1.0-a", "2.1.1", true},
-		{">= 2.1.0-a", "2.1.1-beta", false},
+		{">= 2.1.0-a", "2.1.1-beta", true}, // segment comparison takes precedence over prerelease comparison, but is still valid to compare
 		{">= 2.1.0-a", "2.1.0", true},
 		{"<= 2.1.0-a", "2.0.0", true},
 		{"^1.1", "1.1.1", true},
@@ -125,6 +125,23 @@ func TestConstraintCheck(t *testing.T) {
 		{"< 1.0.0-rc.1", "1.0.0", false},
 		{"< 1.0.0", "1.0.0-rc.1", true},
 		{"> 1.0.0", "1.0.0-rc.1", false},
+		{"< 0.9.12-r1", "0.9.9-r0", true},  // regression
+		{"< 0.9.9-r1", "0.9.9-r0", true},   // regression
+		{"< 0.9.9-r1", "0.9.9-r11", false}, // regression
+		{"> 0.9.9-r1", "0.9.9-r11", true},  // regression
+		{"<= 1.3.3-r0", "1.3.2-r0", true},  // introduced for removal of prereleaseCheck from <=
+		//Tests below to test == versions with different pre releases for each operator
+		{"<= 1.3.3-r0", "1.3.3-r0", true},
+		{"<= 1.3.3-r0", "1.3.3-r1", false},
+		{"<= 1.3.3-r1", "1.3.3-r0", true},
+		{"= 1.3.3-r1", "1.3.3-r1", true},
+		{"= 1.3.3-r1", "1.3.3-r0", false},
+		{"> 1.3.3-r1", "1.3.3-r0", false},
+		{"> 1.3.3-r1", "1.3.3-r3", true},
+		{">= 1.3.3-r1", "1.3.3-r0", false},
+		{">= 1.3.3-r1", "1.3.3-r5", true},
+		{"< 1.3.3-r1", "1.3.3-r0", true},
+		{"< 1.3.3-r1", "1.3.3-r5", false},
 	}
 
 	for _, tc := range cases {
@@ -141,7 +158,7 @@ func TestConstraintCheck(t *testing.T) {
 		actual := c.Check(v)
 		expected := tc.check
 		if actual != expected {
-			t.Fatalf("Version: %s\nConstraint: %s\nExpected: %#v",
+			t.Errorf("\nVersion: %s\nConstraint: %s\nExpected: %#v",
 				tc.version, tc.constraint, expected)
 		}
 	}
